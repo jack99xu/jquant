@@ -67,7 +67,9 @@ python joinquant-docs/tools/export_markdown.py --db joinquant-docs/tools/jq_know
 
 - Windows + PowerShell 5.1。python 3.12.3 可用；**uv 不可用**（依赖安装用 pip）
 - PowerShell 控制台为 GBK：python 脚本直接 print 中文会乱码，排查输出时用 `chcp 65001` 或 `PYTHONIOENCODING=utf-8`
-- 本目录**不是 git 仓库**，且用户未要求版本管理：不要 git init / commit（`tools/_src/.git` 是上游克隆元数据，勿动）
+- 已关联 GitHub 仓库 `https://github.com/jack99xu/jquant.git`（分支 `main`），改动后可正常 commit/push（push 前先看 `git status` 确认无敏感文件）
+- `tools/_src` 上游克隆的 `.git` 元数据已按用户确认删除（2026-08-18 建仓时），`_src` 现为普通目录随仓库同步；上游源 `https://github.com/jiaweizhang1995/jq-docs-mcp.git`，需更新时可重新 clone
+- .gitignore 已排除 `.opencode/`、`.omo/`、`.codegraph/`、`.pytest_cache/`、`__pycache__/`——新增工具目录前检查是否需补规则
 - 权限坑：read/write/Get-Content/Copy-Item 等文件操作对**工作区外路径**（如 `C:\Users\14671\AppData\Local\Temp\opencode\`）会被权限规则拦截；但 git clone、python 执行可正常访问该路径。需要探查外部数据时，用命令方式（git/python）而非文件工具
 - 临时工作目录 `C:\Users\14671\AppData\Local\Temp\opencode\` 已预授权（仅命令访问）
 - 根目录 `.opencode/`、`.omo/`、`.codegraph/`、`.pytest_cache/` 为工具配置/会话状态/缓存，非项目内容，勿改动
