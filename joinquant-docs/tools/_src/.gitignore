@@ -1,0 +1,10 @@
+auth.json
+.env
+*.db
+!jq_knowledge.db
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+.uv/
+dist/
