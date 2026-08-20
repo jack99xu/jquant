@@ -114,6 +114,25 @@ def test_batch_add_runs_creates_and_links(tmp_path):
     assert row["metric_value"] == 1.3
 
 
+def test_batch_add_runs_invalid_role_creates_nothing(tmp_path):
+    conn = _conn(tmp_path)
+    stid = study.create_study(conn, experiment_id="E0001", study_type="ROLLING",
+                              name="滚动", design_json={"windows": []})
+    payload = [
+        {"strategy": "S0001", "start": "2020-01-01", "end": "2021-01-01",
+         "capital": 1000000, "status": "SUCCESS",
+         "group": "2020-2021", "role": "candidate", "partition": "is",
+         "metrics": {"annual_return": 0.18}},
+        {"strategy": "S0001", "start": "2020-01-01", "end": "2021-01-01",
+         "capital": 1000000, "status": "SUCCESS",
+         "group": "2020-2021", "role": "weird", "partition": "is",
+         "metrics": {"annual_return": 0.14}},
+    ]
+    with pytest.raises(RuntimeError, match="role"):
+        study.batch_add_runs(conn, stid, payload)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+
+
 def test_show_study_missing(tmp_path):
     conn = _conn(tmp_path)
     with pytest.raises(RuntimeError, match="不存在"):

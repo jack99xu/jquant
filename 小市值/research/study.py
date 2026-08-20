@@ -55,7 +55,15 @@ def batch_add_runs(conn: sqlite3.Connection, study_id: str, runs: list[dict]) ->
     """批量创建 Run 并挂入 Study（spec §8 rolling_runs.json 形态），返回新 run_id 列表。
 
     每项除 create_run_from_json 的键外，还可带 group/role/partition 挂入 Study 分组。
+    先统一预校验 role/partition，任何一项非法即整体失败，避免先创建出孤儿 Run。
     """
+    for item in runs:
+        role = item.get("role")
+        if role is not None and role not in VALID_ROLES:
+            raise RuntimeError(f"role 必须是 {sorted(VALID_ROLES)} 之一")
+        partition = item.get("partition")
+        if partition is not None and partition not in VALID_PARTITIONS:
+            raise RuntimeError(f"partition 必须是 {sorted(VALID_PARTITIONS)} 之一")
     created = []
     for item in runs:
         rid = run_mod.create_run_from_json(conn, item)
