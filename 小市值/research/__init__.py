@@ -1,0 +1,1 @@
+"""小市值策略研究登记系统（Research Registry v1）。"""
