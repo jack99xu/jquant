@@ -221,6 +221,13 @@ def cmd_analysis_create(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report_regenerate(args: argparse.Namespace) -> int:
+    conn = _get_conn()
+    reports.write_all_reports(conn, REPORT_ROOT)
+    print("已重新生成全部归档报告")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="research", description="小市值策略研究登记系统 v1")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -351,6 +358,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_acreate.add_argument("--conclusion")
     p_acreate.add_argument("--confidence", type=float)
     p_acreate.set_defaults(func=cmd_analysis_create)
+
+    p_rp = sub.add_parser("report", help="归档报告维护")
+    rp_sub = p_rp.add_subparsers(dest="subcommand", required=True)
+    p_repgen = rp_sub.add_parser("regenerate", help="全量重生成 5 类归档报告（以 db 为唯一真相）")
+    p_repgen.set_defaults(func=cmd_report_regenerate)
 
     return parser
 
