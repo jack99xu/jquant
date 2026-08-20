@@ -41,6 +41,7 @@
 ├── 小市值策略代码.md          # 唯一工作源码，不变
 ├── 聚宽回测结果及运行日志.md   # 唯一的原始聚宽粘贴内容入口，不变
 ├── 优化方向.md                # 不变
+├── pyproject.toml             # 声明 research 包（配合 pip install -e 小市值）
 └── research/
     ├── registry.db             # 结构化数据源头，纳入 git 提交
     ├── README.md               # 十条宪法
@@ -580,7 +581,7 @@ python -m research promote `
 
 - "目录结构"一节补充 `research/` 子目录说明
 - "小市值策略"一节工作流描述改为引用 `research/README.md`（十条宪法），说明两级工作流
-- "常用命令"一节补充 `python -m research ...` 系列命令
+- "常用命令"一节补充 `python -m research ...` 系列命令，并记录一次性安装步骤 `pip install -e 小市值`（配合 `小市值/pyproject.toml`）
 - 补操作前提："登记 Strategy 前须先 `git commit` 该代码文件"
 - 保留"评价策略效果只准引用聚宽回测结果及运行日志.md 内容"规则，说明其通过 `metrics.metric_source` 枚举在新系统里延续
 
@@ -599,7 +600,7 @@ python -m research promote `
 
 ## 13. 验收标准
 
-1. `python -m pytest research/tests/ -v` 全部通过（8 个测试文件，pytest 从仓库根执行）
+1. `python -m pytest 小市值/research/tests/ -v` 全部通过（8 个测试文件，pytest 从仓库根执行）
 2. CLI 全命令实测（**注意顺序**：必须先建根 Strategy 才能建 Experiment，因为 `baseline_strategy_id` NOT NULL）：
    `init` → `strategy create`（无 --parent，根版本）→ `strategy create --quick --parent <根版本>`（快速检查点）→ `hypothesis create` → `experiment create`（baseline 指向根 Strategy）→ `run create`（flag 与 --from-json 两种）→ `study create` → `study batch-add-runs` → `analyze` → `analysis create` → `promote`（把快速检查点 Strategy 升级为正式实验），全链路无报错
 3. 5 类 Markdown 文件正确生成且与 db 一致；`analysis create` 后 `studies/*.md` 结论章节被填充
