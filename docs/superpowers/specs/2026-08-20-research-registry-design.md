@@ -252,10 +252,14 @@ CREATE TABLE analyses (
 
 **关键实现要点**：
 
-- `strategy create` 执行前必须确认 `git status` 对 `小市值/小市值策略代码.md` 干净（无未提交改动），否则报错要求先 commit——`git_commit_hash` 必须对应硬盘上实际内容
+- **运行目录约定**：所有命令从仓库根（`D:\量化\聚宽`）执行。`research` 包位于 `小市值/research/`，代码内部需自行定位仓库根（向上遍历查找 `.git` 目录），所有 git 子进程调用、`source_path`（`小市值/小市值策略代码.md`）、日志文件路径均以仓库根为基准。`__main__.py` 需把 `小市值` 目录加入 `sys.path` 或安装为本地包，确保 `python -m research` 从仓库根可执行。
+- `strategy create` 执行前必须确认 `git status` 对 `小市值/小市值策略代码.md` 干净（无未提交改动），否则报错要求先 commit——`git_commit_hash` 必须对应硬盘上实际内容。**检查用 `git diff --quiet HEAD -- <file>`（或 `git -c core.quotepath=false status --porcelain` 解析），避免 Windows 下中文文件名被 git 默认转义（core.quotepath）导致误判**
 - `git_commit_hash` 用 `git rev-parse HEAD`，`file_blob_hash` 用 `git hash-object 小市值/小市值策略代码.md`，均走 subprocess 调用标准 git 命令
 - 版本间 diff 用 `git diff <hash1> <hash2> -- 小市值/小市值策略代码.md`，比手填 changed_modules 列表可靠
 - `file_blob_hash` 相同时（内容未变又跑了一次 `strategy create`），CLI 给警告而非静默通过或强制拒绝——留给用户判断是否是有意回退重登记
+- **根版本引导**：`strategy create` 不传 `--parent` 即创建根版本（`parent_strategy_id = NULL`），这是系统第一个 Strategy 的创建方式，也是任何 Experiment 创建前的先决条件
+- **`strategies.name` 取值规则**：CLI 提供可选 `--name`；不传时默认取 `change_summary`（或 commit message）前 40 个字符截断
+- **`strategy create --experiment E0008` 回填行为**：创建 Strategy 后必须校验 `E0008` 存在（`experiments` 表），并把其 `candidate_strategy_id` 更新为新 Strategy 的 ID；若该 Experiment 已有 candidate 则报错（一个 Experiment 只允许一个 candidate，走 promote 流程替换时先显式清空）
 
 ## 5. 归档 Markdown 模板
 
@@ -429,12 +433,13 @@ v1 实现 5 种：
 - **升级路径**（promote）：快速检查点方向有戏时，用已有 Strategy 回填一个 Experiment：
 
   ```powershell
-  python -m research experiment create `
-    --hypothesis H0012 --baseline S0023 --candidate S0024 `
+  python -m research promote `
+    --strategy S0024 `
+    --hypothesis H0012 --baseline S0023 `
     --title "调仓周期延长" --scope MICRO --tier V2
   ```
 
-  `--candidate S0024` 指向之前 quick 模式建的 Strategy，不重建代码版本，命令内部 INSERT experiments 表并回填关联信息。
+  `promote` 的内部行为：校验 `S0024` 存在且当前无关联 Experiment → 创建一条新的 `experiments` 记录（`candidate_strategy_id = S0024`，status 默认 PLANNED）→ 输出新 Experiment ID。即 promote 是"由快速检查点 Strategy 出发创建 Experiment"的唯一机制；不提供 `promote --experiment` 形式（Experiment 不存在，无法先引用它）。`experiment create` 用于先建 Experiment 后补 candidate 的场景（candidate 留空稍后回填），promote 用于先有 Strategy 后补 Experiment 的场景，二者并存但职责分明。
 
 ## 8. CLI 设计（全部非交互）
 
@@ -486,9 +491,13 @@ python -m research study show ST0012
 python -m research analyze ST0012    # 输出统计 + 5 项过拟合诊断 WARNING
 python -m research analysis create --study ST0012 --decision ACCEPT --evidence E2 --conclusion "..."
 
-# 升级
-python -m research promote --experiment E0008   # 快速检查点 → 正式实验
+# 升级（快速检查点 → 正式实验，见 §7）
+python -m research promote `
+  --strategy S0024 --hypothesis H0012 --baseline S0023 `
+  --title "调仓周期延长" --scope MICRO --tier V2
 ```
+
+**命令执行前置约定**：全部命令从仓库根 `D:\量化\聚宽` 执行（见 §4 运行目录约定）。所有命令若依赖尚未存在的对象（如 experiment 引用不存在的 strategy），报错并给出提示，不做隐式创建（promote 是唯一例外：它显式创建 Experiment）。
 
 `rolling_runs.json` 示例（`study batch-add-runs` 输入，一次创建 N 个 Run + metrics + 加入 Study）：
 
@@ -527,6 +536,7 @@ python -m research promote --experiment E0008   # 快速检查点 → 正式实�
 - `baseline_strategy_id` 强制存在（schema NOT NULL），任何比较都有锚点。
 - IS-OOS Gap 依赖 `study_runs.partition` 字段（决策 D1），未标注 partition 的 run 不参与该诊断。
 - 数据纪律：`metrics.metric_source` 枚举强制——只有 `joinquant_pasted` 可作为 Analysis 证据引用，`secondhand_mention` 明确标注不可用于 Analysis 结论。
+- **`regime` 判定约定**：由登记时的 AI 助手结合回测区间对应的指数走势（如中证 1000 该区间涨跌幅与波动）判断填写（bull/bear/sideways），拿不准填 `unknown`；该字段是辅助分析维度，不参与任何自动诊断。
 
 ## 10. 实施阶段（7 Phase）
 
@@ -547,6 +557,7 @@ python -m research promote --experiment E0008   # 快速检查点 → 正式实�
 
 ### Phase 4：Run
 - `run create`（支持 `--from-json` 一次带入 metrics + 新增字段；支持 FAILED + error_type/error_message）、`run add-metric`、`run show`
+- **`run add-metric` 重复键行为**：`(run_id, metric_name)` 已存在时**更新**该行（upsert）而非报错——用于回测结果被回填/修正的场景；`metric_source` 同时更新
 - 测试：`test_run.py`
 
 ### Phase 5：Study
@@ -555,12 +566,13 @@ python -m research promote --experiment E0008   # 快速检查点 → 正式实�
 
 ### Phase 6：Analysis
 - `analyze STxxxx`（统计：mean/median/std/min/max/positive_ratio/baseline_delta + 5 项过拟合诊断 WARNING）、`analysis create`
+- **数据不足处理**：SINGLE 类型 Study（仅 1 个 run）无法计算 4 项诊断时，输出 `[N/A] 数据不足` 而非报错；IS-OOS Gap 仅在存在 `partition='oos'` 的 run 时计算，否则输出 `[N/A] 未标注样本外区间`
 - 测试：`test_analysis.py`
 
 ### Phase 7：Markdown 生成 + AGENTS.md 联动
-- 数据库 → 5 类 Markdown 自动生成（templates.py + reports.py）
-- `promote` 命令（快速检查点 → 正式实验）
-- 更新 AGENTS.md（见 §12）
+- 数据库 → 5 类 Markdown 自动生成（templates.py + reports.py）。**单向生成**：生成的文件以 db 为唯一真相，禁止手工编辑生成文件；`analyses/*.md` 由 `analysis create` 时一并生成/重写，`studies/*.md` 的"结论"章节由关联 Analysis 填充
+- `promote` 命令（快速检查点 → 正式实验，见 §7 语义）
+- 更新 AGENTS.md（见 §11）
 - 历史迁移**不执行**（决策 D2）
 
 ## 11. 需要同步修改的 AGENTS.md
@@ -586,14 +598,16 @@ python -m research promote --experiment E0008   # 快速检查点 → 正式实�
 
 ## 13. 验收标准
 
-1. `python -m pytest research/tests/ -v` 全部通过（8 个测试文件）
-2. CLI 全命令实测：init → hypothesis create → experiment create → strategy create（quick 与正式两种）→ run create（flag 与 --from-json 两种）→ study create → study batch-add-runs → analyze → analysis create → promote，全链路无报错
-3. 5 类 Markdown 文件正确生成且与 db 一致
+1. `python -m pytest research/tests/ -v` 全部通过（8 个测试文件，pytest 从仓库根执行）
+2. CLI 全命令实测（**注意顺序**：必须先建根 Strategy 才能建 Experiment，因为 `baseline_strategy_id` NOT NULL）：
+   `init` → `strategy create`（无 --parent，根版本）→ `strategy create --quick`（快速检查点）→ `hypothesis create` → `experiment create`（baseline 指向根 Strategy）→ `run create`（flag 与 --from-json 两种）→ `study create` → `study batch-add-runs` → `analyze` → `analysis create` → `promote`（把快速检查点 Strategy 升级为正式实验），全链路无报错
+3. 5 类 Markdown 文件正确生成且与 db 一致；`analysis create` 后 `studies/*.md` 结论章节被填充
 4. `strategy create` 在工作区有未提交改动时报错拦截
 5. `file_blob_hash` 相同重复登记时给出警告
 6. FAILED/INCOMPLETE Run 可正常创建，metrics 来源枚举强制校验
 7. AGENTS.md 完成 §11 的 5 项更新
 8. 根目录 `git status` 干净，`registry.db` 纳入版本控制
+9. 从仓库根执行 `python -m research init` 可正常初始化（验证运行目录约定）
 
 ## 14. 已知限制（v2 方向，参考定稿 §14）
 
