@@ -5,7 +5,7 @@
 项目分两部分：
 
 - **聚宽知识库**（`joinquant-docs/`）：把聚宽官方 API 文档、数据字典、FAQ 整理成本地 Markdown，供 AI 写策略时 grep/read 检索，防止编造 API 签名。已生成（2026-08-18，plan 执行完毕）；维护任务是重跑抓取/导出（命令见下）
-- **小市值策略研究**（`小市值/`）：小市值因子策略的迭代工作区，当前主要工作方向。工作流：改代码 → 用户复制到聚宽平台跑回测 → 回测结果与日志粘贴回本地 → 验证效果（详见"小市值策略"一节）
+- **小市值策略研究**（`小市值/`）：小市值因子策略的迭代工作区，当前主要工作方向。工作流：改代码 → 用户复制到聚宽平台跑回测 → 回测结果与日志粘贴回本地 → 验证效果（详见"小市值策略"一节）。研究登记系统（记录每次改动与其回测结果）设计已定稿、实施计划就绪待执行（详见"研究登记系统"一节）
 
 ## 目录结构
 
@@ -16,7 +16,10 @@
   - `export_markdown.py`（导出器，零第三方依赖）、`test_export.py`（15 个 pytest 测试）
   - `jq_knowledge.db`（数据源 SQLite）、`_src/`（上游 jq-docs-mcp 克隆，含 `run_scrape.py` 抓取脚本）
 - `小市值/` — 小市值因子策略工作区（3 个 md，职责与约定见"小市值策略"一节）
-- `docs/superpowers/` — 设计文档 `specs/2026-08-18-joinquant-docs-design.md` 与实施计划 `plans/2026-08-18-joinquant-docs.md`（已完成，改动流程时参照）
+- `docs/` — 研究登记系统原始方案与定稿（`记录系统设计.md`、`研究登记系统v1定稿.md`，2026-08-19）
+- `docs/superpowers/` — 设计文档与实施计划：
+  - `specs/2026-08-18-joinquant-docs-design.md` + `plans/2026-08-18-joinquant-docs.md`（知识库，已完成，改动流程时参照）
+  - `specs/2026-08-20-research-registry-design.md`（研究登记系统落地规格，已批准）+ `plans/2026-08-20-research-registry.md`（11 任务 TDD 实施计划，已提交**未执行**，详见"研究登记系统"一节）
 
 ## 小市值策略（当前主战场）
 
@@ -34,9 +37,18 @@
 
 已知时间线矛盾（引用文件时注意）：
 
-- 优化方向.md 称"当前策略不设流动性约束"，但当前代码已实现换手率过滤与 688 过滤——**文档条目不能直接当未完成事项**，须先对照代码核状态
-- 回测日志文件停留在 2021-01~02 的旧回测（7 次调仓）；2024-01/2026-05/2026-07 等最新回测（最大回撤 17.42%、2026-07-22 后反弹 +21.6%）的摘要**未粘贴**，仅 优化方向.md 文字提及
+- 优化方向.md 已于 2026-08-18 更新为 8 条按性价比排序的建议（流动性下限/市值下限<10亿/财务质量/月频调仓/风格择时门等，正文引用 2026-05 流动性挤出、17.42% 回撤为事实依据）。条目仍**不能直接当未完成事项**：如"流动性下限"建议口径（`valuation.turnover_ratio > X` 或日均成交额>5000万）与代码已实现的换手率>1% 过滤（自算口径）不等价，须先对照代码核状态
+- 回测日志文件停留在 2021-01~02 的旧回测（7 次调仓，2026-08-20 grep 复核全文仍无 2024/2026 日期行）；2024-01/2026-05/2026-07 等最新回测（最大回撤 17.42%、2026-07-22 后反弹 +21.6%）的摘要**未粘贴**，仅 优化方向.md 文字提及
 - 日志解读参照：科创板"市价单需要指定保护限价"报错来自旧回测（当时无 688 过滤）；"因为资金有限，下单数量调整为 X"+"已经跌停，市价卖单取消"= 卖出未成交导致现金不足；"开仓/平仓数量必须是100的整数倍，调整为 X"为正常校验提示（INFO），非错误
+
+## 研究登记系统（设计已定稿 2026-08-20，未实现）
+
+- 目标：把每次策略代码改动与对应聚宽回测结果登记进 SQLite + 生成 Markdown 报告，支撑"哪个改动真正有效"的分析与过拟合防护。**spec 是唯一实现依据**
+- 文档链：`docs/记录系统设计.md` + `docs/研究登记系统v1定稿.md`（原始设计）→ `docs/superpowers/specs/2026-08-20-research-registry-design.md`（已批准落地规格）→ `docs/superpowers/plans/2026-08-20-research-registry.md`（11 任务 TDD 计划，已提交 929d950，**未执行**）
+- 现状：`小市值/research/` 包、`registry.db`、`pyproject.toml` 均**不存在**；执行方式待用户确认（Subagent-Driven 每任务独立子代理+两阶段评审 / Inline 分批执行）
+- 实现约定（spec 已定，勿自行改）：8 表 SQLite（`小市值/research/registry.db`）；CLI `python -m research` 全非交互（flag/JSON）；`pip install -e 小市值` 一次性安装，命令统一从仓库根 `D:\量化\聚宽` 执行；`metric_value` 一律存小数；非数值信息（如最大回撤区间）写入 `runs.notes`
+- 已定字段与指标名（防编造）：D1 六字段 = `runs.n_trades/benchmark/benchmark_return/regime`、`experiments.n_trials`(默认1)、`study_runs.partition`(is/oos)；约定指标名 = total_return/alpha/beta/daily_excess_return/excess_max_drawdown/excess_sharpe/daily_win_rate/information_ratio/benchmark_volatility/win_trades/loss_trades/drawdown_recovery
+- 执行到 plan 的 Task 11 时会按 spec §11 修订本 AGENTS.md（5 项更新）——届时以执行结果为准
 
 ## 聚宽平台要点（写/改策略代码时防编造）
 
