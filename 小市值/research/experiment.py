@@ -25,8 +25,8 @@ def _validate_experiment_args(conn, baseline_id, change_scope, validation_tier, 
         raise RuntimeError(f"change_scope 必须是 {sorted(VALID_SCOPES)} 之一")
     if validation_tier not in VALID_TIERS:
         raise RuntimeError(f"validation_tier 必须是 {sorted(VALID_TIERS)} 之一")
-    if n_trials < 1:
-        raise RuntimeError("n_trials 必须 ≥ 1")
+    if n_trials < 1 or n_trials != int(n_trials):
+        raise RuntimeError("n_trials 必须为正整数")
     if conn.execute("SELECT 1 FROM strategies WHERE strategy_id=?", (baseline_id,)).fetchone() is None:
         raise RuntimeError(f"baseline Strategy {baseline_id} 不存在")
 

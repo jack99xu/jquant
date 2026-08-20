@@ -73,6 +73,15 @@ def test_create_experiment_with_trials(tmp_path):
     assert row["n_trials"] == 5
 
 
+def test_create_experiment_float_trials_rejected(tmp_path):
+    conn = _conn(tmp_path)
+    s1 = _make_strategy(tmp_path, conn)
+    with pytest.raises(RuntimeError, match="正整数"):
+        experiment.create_experiment(conn, baseline_id=s1, title="t",
+                                     change_scope="MICRO", validation_tier="V1",
+                                     n_trials=2.5)
+
+
 def test_promote_creates_experiment_with_candidate(tmp_path):
     conn = _conn(tmp_path)
     base = _make_strategy(tmp_path, conn, summary="base")
