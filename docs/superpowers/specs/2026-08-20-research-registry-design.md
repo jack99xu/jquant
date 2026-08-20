@@ -9,6 +9,7 @@
 | D1 | 6 个查漏字段**全部纳入 v1** | n_trades / benchmark / benchmark_return / regime / n_trials / study_runs.partition；drawdown_recovery 作为约定指标名（metrics 表键值对天然支持，无需改 schema） |
 | D2 | **不迁移历史数据** | 2021 日志回测、2024/2026 转述回测均不建 Run；从当前代码状态开始登记，历史脉络由 git 历史承担 |
 | D3 | **全部实现 7 个 Phase** | 一次交付完整 v1，含 Markdown 生成与 AGENTS.md 联动 |
+| D4 | **约定指标名扩展为完整清单**（2026-08-20） | 对照聚宽平台实际回测报告 21 项指标逐一核对后，新增 11 个约定指标名：total_return / alpha / beta / daily_excess_return / excess_max_drawdown / excess_sharpe / daily_win_rate / information_ratio / benchmark_volatility / win_trades / loss_trades；同时约定：metric_value 一律存小数、最大回撤区间等非数值信息写入 runs.notes（详见 §4 约定指标名注释） |
 
 ### 新增字段用途（Librarian 业界实践调研依据）
 
@@ -194,9 +195,18 @@ CREATE TABLE metrics (
     FOREIGN KEY (run_id) REFERENCES runs(run_id)
 );
 
--- 约定指标名（写入 metric_name，无 schema 变更）：
--- annual_return / max_drawdown / sharpe / volatility / win_rate / profit_loss_ratio /
--- calmar / sortino / drawdown_recovery / turnover_ratio / benchmark_excess_return
+-- 约定指标名（写入 metric_name，无 schema 变更）——完整清单（2026-08-20 对照聚宽平台实际回测报告扩展）：
+-- 收益类：total_return(策略总收益) / annual_return(策略年化收益) / benchmark_excess_return(超额收益)
+-- 风险类：max_drawdown(最大回撤) / volatility(策略波动率) / drawdown_recovery(回撤恢复天数)
+-- 比率类：sharpe / sortino / calmar / information_ratio(信息比率) / profit_loss_ratio(盈亏比)
+-- 胜率类：win_rate(胜率) / daily_win_rate(日胜率)
+-- 交易类：win_trades(盈利次数) / loss_trades(亏损次数)——逐笔成交订单口径，与 runs.n_trades(调仓次数) 不同
+-- 归因类：alpha(阿尔法) / beta(贝塔)
+-- 超额风险：daily_excess_return(日均超额收益) / excess_max_drawdown(超额收益最大回撤) / excess_sharpe(超额收益夏普)
+-- 基准类：benchmark_volatility(基准波动率)——基准收益存 runs.benchmark_return 字段
+-- 换手类：turnover_ratio(换手率)
+-- 单位约定：metric_value 一律存小数（0.213 而非 21.3%；百分比先除 100 再存），README 写明，避免 analyze 统计错乱
+-- 非数值信息（如最大回撤区间 "2026/03/03,2026/06/30"）不存 metrics 表，写入 runs.notes 或 Rxxxx.md 模板
 
 CREATE TABLE studies (
     study_id     TEXT PRIMARY KEY,  -- ST0001, ...
@@ -347,15 +357,25 @@ SUCCESS
 
 | 指标 | 数值 | 来源 |
 |---|---|---|
-| annual_return | 0.213 | joinquant_pasted |
-| max_drawdown | 0.174 | joinquant_pasted |
-| sharpe | 1.52 | joinquant_pasted |
-| drawdown_recovery | 45 | joinquant_pasted |
+| total_return | 1.2284 | joinquant_pasted |
+| annual_return | 0.1586 | joinquant_pasted |
+| benchmark_excess_return | 1.4889 | joinquant_pasted |
+| max_drawdown | 0.1848 | joinquant_pasted |
+| sharpe | 0.734 | joinquant_pasted |
+| sortino | 1.052 | joinquant_pasted |
+| win_rate | 0.701 | joinquant_pasted |
+| profit_loss_ratio | 2.222 | joinquant_pasted |
+| alpha | 0.139 | joinquant_pasted |
+| beta | 0.345 | joinquant_pasted |
+| information_ratio | 0.938 | joinquant_pasted |
+| win_trades | 148 | joinquant_pasted |
+| loss_trades | 63 | joinquant_pasted |
 
 ## 原始数据位置
 见 `聚宽回测结果及运行日志.md` 对应条目（按日期或锚点定位，不在此重复粘贴，避免两处数据不同步）
 
 ## Notes
+最大回撤区间: 2026/03/03, 2026/06/30（非数值信息按约定写入 Notes）
 ...
 ```
 
