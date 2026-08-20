@@ -1,7 +1,7 @@
 """Study 统计分析与过拟合诊断、Analysis 结论登记测试。"""
 import pytest
 
-from research import analysis, db, reports  # reports 为 Task 9 追加（顶部 import 区）
+from research import analysis, cli, db, reports  # reports 为 Task 9、cli 为 Task 10 追加（顶部 import 区）
 
 
 def _conn(tmp_path):
@@ -225,3 +225,76 @@ def test_analysis_report_diagnostics(tmp_path):
     # report_path 回写
     row = conn.execute("SELECT report_path FROM analyses WHERE analysis_id='A0001'").fetchone()
     assert row["report_path"] == str(path)
+
+
+# ==================== CLI 冒烟测试（Task 10，spec §8） ====================
+
+
+def _cli_env(tmp_path, monkeypatch):
+    """构造临时 db 并注入 cli：_get_conn 返回该连接，报告输出到 tmp 目录。"""
+    conn = db.connect(tmp_path / "t.db")
+    db.init_db(conn)
+    conn.execute(
+        "INSERT INTO strategies (strategy_id, name, source_path, git_commit_hash, file_blob_hash, created_at) "
+        "VALUES ('S0001', 's', 'p', 'h', 'b', '2026-01-01')")
+    conn.commit()
+    monkeypatch.setattr(cli, "_get_conn", lambda: conn)
+    monkeypatch.setattr(cli, "REPORT_ROOT", tmp_path / "out")
+    return conn
+
+
+def test_cli_init_creates_db(tmp_path, monkeypatch):
+    conn = _cli_env(tmp_path, monkeypatch)
+    assert cli.main(["init"]) == 0  # init 幂等，不报错
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    assert {r["name"] for r in rows} >= {"strategies", "runs", "studies", "analyses"}
+
+
+def test_cli_run_create_and_show(tmp_path, monkeypatch, capsys):
+    conn = _cli_env(tmp_path, monkeypatch)
+    code = cli.main(["run", "create", "--strategy", "S0001",
+                     "--start", "2020-01-01", "--end", "2021-01-01",
+                     "--status", "SUCCESS",
+                     "--metric", "sharpe=1.52", "--metric", "total_return=0.213"])
+    assert code == 0
+    assert "R0001" in capsys.readouterr().out
+    row = conn.execute("SELECT metric_value FROM metrics WHERE metric_name='sharpe'").fetchone()
+    assert row["metric_value"] == 1.52
+    assert cli.main(["run", "show", "R0001"]) == 0
+
+
+def test_cli_missing_entity_returns_1(tmp_path, monkeypatch, capsys):
+    _cli_env(tmp_path, monkeypatch)
+    assert cli.main(["run", "show", "R9999"]) == 1
+    assert "不存在" in capsys.readouterr().err
+
+
+def test_cli_analyze_and_analysis_flow(tmp_path, monkeypatch, capsys):
+    conn = _cli_env(tmp_path, monkeypatch)
+    conn.execute(
+        "INSERT INTO experiments (experiment_id, baseline_strategy_id, title, change_scope, validation_tier, created_at) "
+        "VALUES ('E0001', 'S0001', 't', 'MICRO', 'V2', '2026-01-01')")
+    conn.execute(
+        "INSERT INTO studies (study_id, experiment_id, study_type, name, design_json, created_at) "
+        "VALUES ('ST0001', 'E0001', 'ROLLING', '滚动', '{\"windows\": []}', '2026-01-01')")
+    for rid, role, part, val in [("R0001", "candidate", "is", 0.2), ("R0002", "candidate", "oos", 0.1)]:
+        conn.execute(
+            "INSERT INTO runs (run_id, strategy_id, start_date, end_date, status, created_at) "
+            "VALUES (?, 'S0001', '2020-01-01', '2021-01-01', 'SUCCESS', '2026-01-01')", (rid,))
+        conn.execute(
+            "INSERT INTO metrics (run_id, metric_name, metric_value, metric_source) "
+            "VALUES (?, 'total_return', ?, 'joinquant_pasted')", (rid, val))
+        conn.execute(
+            "INSERT INTO study_runs (study_id, run_id, group_name, role, partition) "
+            "VALUES ('ST0001', ?, 'g1', ?, ?)", (rid, role, part))
+    conn.commit()
+    assert cli.main(["analyze", "ST0001"]) == 0
+    assert "Overfitting Signals" in capsys.readouterr().out
+    code = cli.main(["analysis", "create", "--study", "ST0001", "--decision", "ACCEPT",
+                     "--evidence", "E2", "--conclusion", "方向一致"])
+    assert code == 0
+    assert "A0001" in capsys.readouterr().out
+    # analysis create 一并生成 analyses/A0001.md 与回填 studies/ST0001.md 结论（spec Phase 7）
+    assert (tmp_path / "out" / "analyses" / "A0001.md").exists()
+    study_md = (tmp_path / "out" / "studies" / "ST0001.md").read_text(encoding="utf-8")
+    assert "方向一致" in study_md
