@@ -16,6 +16,7 @@
   - `export_markdown.py`（导出器，零第三方依赖）、`test_export.py`（15 个 pytest 测试）
   - `jq_knowledge.db`（数据源 SQLite）、`_src/`（上游 jq-docs-mcp 克隆，含 `run_scrape.py` 抓取脚本）
 - `小市值/` — 小市值因子策略工作区（3 个 md，职责与约定见"小市值策略"一节）
+  - `小市值/research/` — 研究登记系统（Research Registry v1）：`registry.db`（SQLite 数据源头，纳入 git 提交）、`cli.py`（`python -m research` 全子命令）、`schema.sql`、`strategies|experiments|runs|studies|analyses/`（归档 Markdown，单向生成，禁止手工编辑）、`README.md`（十条宪法）
 - `docs/` — 研究登记系统原始方案与定稿（`记录系统设计.md`、`研究登记系统v1定稿.md`，2026-08-19）
 - `docs/superpowers/` — 设计文档与实施计划：
   - `specs/2026-08-18-joinquant-docs-design.md` + `plans/2026-08-18-joinquant-docs.md`（知识库，已完成，改动流程时参照）
@@ -28,6 +29,9 @@
 - `小市值/小市值策略代码.md` — 唯一策略源码。**每次改动后的完整代码写回此文件**，由用户复制到聚宽平台运行。AI 无法在本地跑回测；回测区间/初始资金等配置在平台侧设置，代码中没有
 - `小市值/聚宽回测结果及运行日志.md` — 用户把平台回测结果与运行日志粘贴至此。评价策略效果、排查报错**只准引用此文件内容**，不得编造收益/回撤/胜率数据
 - `小市值/优化方向.md` — 用户记录的待优化项，**只读参考，禁止直接执行**。用户要求：每次实验必须明确变更范围、核心假设和验证等级；一个实验允许包含多个代码修改，但必须能明确说明这些修改共同验证的研究假设。若多个修改彼此独立、可单独验证，应拆分为多个实验；若多个修改是实现同一策略机制所必需的，可作为同一实验
+- 登记纪律见 `小市值/research/README.md`（十条宪法）。两级工作流：快速检查点（`strategy create --quick`，摩擦≈commit message）与正式实验（Hypothesis → Experiment → Study → Analysis 完整链条）；快速检查点方向有戏时用 `promote` 升级为正式实验
+- 登记 Strategy 前必须先 `git commit` 该代码文件（`小市值/小市值策略代码.md`），`git_commit_hash` 必须对应硬盘实际内容；工作区有未提交改动时 `strategy create` 会报错拦截
+- "评价策略效果只准引用聚宽回测结果及运行日志.md 内容"规则在新系统延续：登记 Run 时每条指标必须标注 `metric_source`（joinquant_pasted / derived_local / manual_estimate / secondhand_mention），只有 `joinquant_pasted` 可作为 Analysis 证据引用，二手转述（如优化方向.md 提及的数值）必须标 `secondhand_mention` 且不得用于 Analysis 结论
 
 策略要点（改动前先读该文件核对，以下为概览）：
 
@@ -73,6 +77,26 @@ python joinquant-docs/tools/export_markdown.py --db joinquant-docs/tools/jq_know
 python joinquant-docs/tools/_src/run_scrape.py
 Copy-Item joinquant-docs/tools/_src/jq_knowledge.db joinquant-docs/tools/jq_knowledge.db
 python joinquant-docs/tools/export_markdown.py --db joinquant-docs/tools/jq_knowledge.db --out joinquant-docs
+```
+
+```powershell
+# 研究登记系统（一次性安装）
+pip install -e 小市值
+
+# 常用命令（全部从仓库根执行）
+python -m research init
+python -m research strategy create --parent S0023 --summary "..."        # 登记策略版本（先 commit 代码文件）
+python -m research strategy create --quick --parent S0023 --summary "..." # 快速检查点
+python -m research strategy show S0024 / strategy tree S0001
+python -m research hypothesis create --title "..." --description "..." --expected "..."
+python -m research experiment create --hypothesis H0010 --baseline S0020 --title "..." --scope MICRO --tier V2
+python -m research run create --strategy S0024 --start 2020-01-01 --end 2021-01-01 --status SUCCESS --metric sharpe=1.52
+python -m research run create --from-json run.json
+python -m research study create --experiment E0008 --type ROLLING --name "..." --design design.json
+python -m research study batch-add-runs ST0012 --from-json rolling_runs.json
+python -m research analyze ST0012
+python -m research analysis create --study ST0012 --decision ACCEPT --evidence E2 --conclusion "..."
+python -m research promote --strategy S0024 --hypothesis H0012 --baseline S0023 --title "..." --scope MICRO --tier V2
 ```
 
 ## 环境事实（实测验证）
