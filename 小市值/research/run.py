@@ -31,20 +31,25 @@ def create_run(conn, *, strategy_id: str, start_date: str, end_date: str, status
         raise RuntimeError(f"regime 必须是 {sorted(VALID_REGIMES)} 之一")
     _check_strategy(conn, strategy_id)
 
-    parameters_json = json.dumps(parameters, ensure_ascii=False) if parameters else None
+    parameters_json = json.dumps(parameters, ensure_ascii=False) if parameters is not None else None
     rid = ids.next_id(conn, "R")
-    conn.execute(
-        "INSERT INTO runs (run_id, strategy_id, experiment_id, start_date, end_date, "
-        "initial_capital, frequency, parameters_json, status, error_type, error_message, "
-        "n_trades, benchmark, benchmark_return, regime, source_log_path, notes, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, date('now'))",
-        (rid, strategy_id, experiment_id, start_date, end_date, initial_capital, frequency,
-         parameters_json, status, error_type, error_message, n_trades, benchmark,
-         benchmark_return, regime, source_log_path, notes),
-    )
-    for name, value, source in (metrics or []):
-        add_metric(conn, rid, name, value, source, commit=False)
-    conn.commit()
+    try:
+        conn.execute(
+            "INSERT INTO runs (run_id, strategy_id, experiment_id, start_date, end_date, "
+            "initial_capital, frequency, parameters_json, status, error_type, error_message, "
+            "n_trades, benchmark, benchmark_return, regime, source_log_path, notes, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, date('now'))",
+            (rid, strategy_id, experiment_id, start_date, end_date, initial_capital, frequency,
+             parameters_json, status, error_type, error_message, n_trades, benchmark,
+             benchmark_return, regime, source_log_path, notes),
+        )
+        for name, value, source in (metrics or []):
+            add_metric(conn, rid, name, value, source, commit=False)
+        conn.commit()
+    except BaseException:
+        # 中途任何失败（如非法 metric_source）都回滚，不留孤儿 runs 行
+        conn.rollback()
+        raise
     return rid
 
 
@@ -66,6 +71,9 @@ def add_metric(conn: sqlite3.Connection, run_id: str, name: str, value: float,
 
 def create_run_from_json(conn: sqlite3.Connection, data: dict) -> str:
     """JSON payload 建 Run（spec §8 形态：strategy/start/end/capital + metrics 字典）。"""
+    missing = [k for k in ("strategy", "start", "end") if k not in data]
+    if missing:
+        raise RuntimeError(f"JSON 缺少必要字段: {missing}")
     metrics = [(name, value, "joinquant_pasted")
                for name, value in (data.get("metrics") or {}).items()]
     return create_run(

@@ -86,6 +86,7 @@ def test_add_metric_upsert(tmp_path):
     sharpe = [m for m in info["metrics"] if m["metric_name"] == "sharpe"]
     assert len(sharpe) == 1
     assert sharpe[0]["metric_value"] == 1.6
+    assert sharpe[0]["metric_source"] == "derived_local"
 
 
 def test_add_metric_invalid_source(tmp_path):
@@ -94,6 +95,19 @@ def test_add_metric_invalid_source(tmp_path):
                          end_date="2021-01-01", status="SUCCESS")
     with pytest.raises(RuntimeError, match="metric_source"):
         run.add_metric(conn, rid, "sharpe", 1.5, "fabricated")
+
+
+def test_create_run_bad_source_rolls_back(tmp_path):
+    conn = _conn(tmp_path)
+    with pytest.raises(RuntimeError, match="metric_source"):
+        run.create_run(conn, strategy_id="S0001", start_date="2020-01-01",
+                       end_date="2021-01-01", status="SUCCESS",
+                       metrics=[("sharpe", 1.5, "bogus")])
+    assert conn.execute("SELECT COUNT(*) AS c FROM runs").fetchone()["c"] == 0
+    rid = run.create_run(conn, strategy_id="S0001", start_date="2020-01-01",
+                         end_date="2021-01-01", status="SUCCESS")
+    assert rid == "R0001"  # 无孤儿行、无 ID 空洞
+    assert conn.execute("SELECT COUNT(*) AS c FROM runs").fetchone()["c"] == 1
 
 
 def test_create_run_from_json(tmp_path):
