@@ -269,6 +269,17 @@ def test_cli_missing_entity_returns_1(tmp_path, monkeypatch, capsys):
     assert "不存在" in capsys.readouterr().err
 
 
+def test_cli_bad_metric_value_returns_1(tmp_path, monkeypatch, capsys):
+    conn = _cli_env(tmp_path, monkeypatch)
+    code = cli.main(["run", "create", "--strategy", "S0001",
+                     "--start", "2020-01-01", "--end", "2021-01-01",
+                     "--metric", "sharpe=abc"])
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "错误:" in err
+    assert "Traceback" not in err
+
+
 def test_cli_analyze_and_analysis_flow(tmp_path, monkeypatch, capsys):
     conn = _cli_env(tmp_path, monkeypatch)
     conn.execute(

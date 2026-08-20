@@ -141,6 +141,7 @@ def cmd_run_create(args: argparse.Namespace) -> int:
 def cmd_run_add_metric(args: argparse.Namespace) -> int:
     conn = _get_conn()
     run.add_metric(conn, args.run_id, args.name, args.value, args.source)
+    reports.write_run_report(conn, args.run_id, REPORT_ROOT)
     print(f"已写入指标 {args.run_id}.{args.name}")
     return 0
 
@@ -170,6 +171,7 @@ def cmd_study_add_run(args: argparse.Namespace) -> int:
     conn = _get_conn()
     study.add_run(conn, args.study_id, args.run, group_name=args.group,
                   role=args.role, partition=args.partition)
+    reports.write_study_report(conn, args.study_id, REPORT_ROOT)
     print(f"已挂入 {args.run} → {args.study_id}")
     return 0
 
@@ -358,7 +360,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except RuntimeError as e:
+    except (RuntimeError, ValueError, json.JSONDecodeError, OSError, sqlite3.Error) as e:
         print(f"错误: {e}", file=sys.stderr)
         return 1
 
