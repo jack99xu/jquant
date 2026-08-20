@@ -143,9 +143,12 @@ def _seed_report_data(conn):
         "VALUES ('S0001', NULL, '根版本', '小市值/小市值策略代码.md', "
         "'a'*40, 'b'*40, '初始策略', '2026-08-18')")
     conn.execute(
-        "INSERT INTO experiments (experiment_id, baseline_strategy_id, candidate_strategy_id, "
+        "INSERT INTO hypotheses (hypothesis_id, title, description, expected_effect, created_at) "
+        "VALUES ('H0001', '指数趋势风控假设', '测试假设', '预期收益方向: 指数趋势向下时回撤收窄', '2026-08-18')")
+    conn.execute(
+        "INSERT INTO experiments (experiment_id, hypothesis_id, baseline_strategy_id, candidate_strategy_id, "
         "title, change_scope, validation_tier, n_trials, status, created_at) "
-        "VALUES ('E0001', 'S0001', 'S0001', '指数趋势风控', 'LARGE', 'V4', 3, 'RUNNING', '2026-08-18')")
+        "VALUES ('E0001', 'H0001', 'S0001', 'S0001', '指数趋势风控', 'LARGE', 'V4', 3, 'RUNNING', '2026-08-18')")
     conn.execute(
         "INSERT INTO runs (run_id, strategy_id, experiment_id, start_date, end_date, "
         "initial_capital, frequency, status, n_trades, benchmark, benchmark_return, regime, created_at) "
@@ -189,6 +192,7 @@ def test_experiment_report_written(tmp_path):
     assert "Baseline: S0001" in text
     assert "Candidate: S0001" in text
     assert "试验次数: 3" in text
+    assert "预期收益方向: 指数趋势向下时回撤收窄" in text  # hypotheses.expected_effect 回填（Task 9 review 修复）
 
 
 def test_run_report_metrics_table(tmp_path):

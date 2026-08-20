@@ -34,9 +34,21 @@ def write_strategy_report(conn: sqlite3.Connection, strategy_id: str,
     return _write("strategy", strategy_id, templates.strategy_md(info), root)
 
 
+def _experiment_info(conn: sqlite3.Connection, experiment_id: str) -> dict:
+    """Experiment 详情 + hypotheses.expected_effect（供模板渲染）。"""
+    info = experiment.show_experiment(conn, experiment_id)
+    if info.get("hypothesis_id"):
+        h = conn.execute(
+            "SELECT expected_effect FROM hypotheses WHERE hypothesis_id=?", (info["hypothesis_id"],)
+        ).fetchone()
+        if h is not None and h["expected_effect"] is not None:
+            info["expected_effect"] = h["expected_effect"]
+    return info
+
+
 def write_experiment_report(conn: sqlite3.Connection, experiment_id: str,
                             root: Path | None = None) -> Path:
-    info = experiment.show_experiment(conn, experiment_id)
+    info = _experiment_info(conn, experiment_id)
     return _write("experiment", experiment_id, templates.experiment_md(info), root)
 
 
