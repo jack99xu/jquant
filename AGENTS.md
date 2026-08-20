@@ -45,12 +45,13 @@
 - 回测日志文件停留在 2021-01~02 的旧回测（7 次调仓，2026-08-20 grep 复核全文仍无 2024/2026 日期行）；2024-01/2026-05/2026-07 等最新回测（最大回撤 17.42%、2026-07-22 后反弹 +21.6%）的摘要**未粘贴**，仅 优化方向.md 文字提及
 - 日志解读参照：科创板"市价单需要指定保护限价"报错来自旧回测（当时无 688 过滤）；"因为资金有限，下单数量调整为 X"+"已经跌停，市价卖单取消"= 卖出未成交导致现金不足；"开仓/平仓数量必须是100的整数倍，调整为 X"为正常校验提示（INFO），非错误
 
-## 研究登记系统（设计已定稿 2026-08-20，未实现）
+## 研究登记系统（Research Registry v1，已实现 2026-08-20）
 
-- 目标：把每次策略代码改动与对应聚宽回测结果登记进 SQLite + 生成 Markdown 报告，支撑"哪个改动真正有效"的分析与过拟合防护。**spec 是唯一实现依据**
-- 文档链：`docs/记录系统设计.md` + `docs/研究登记系统v1定稿.md`（原始设计）→ `docs/superpowers/specs/2026-08-20-research-registry-design.md`（已批准落地规格）→ `docs/superpowers/plans/2026-08-20-research-registry.md`（11 任务 TDD 计划，已提交 929d950，**未执行**）
-- 现状：`小市值/research/` 包、`registry.db`、`pyproject.toml` 均**不存在**；执行方式待用户确认（Subagent-Driven 每任务独立子代理+两阶段评审 / Inline 分批执行）
-- 实现约定（spec 已定，勿自行改）：8 表 SQLite（`小市值/research/registry.db`）；CLI `python -m research` 全非交互（flag/JSON）；`pip install -e 小市值` 一次性安装，命令统一从仓库根 `D:\量化\聚宽` 执行；`metric_value` 一律存小数；非数值信息（如最大回撤区间）写入 `runs.notes`
+- 目标：把每次策略代码改动与对应聚宽回测结果登记进 SQLite + 生成 Markdown 报告，支撑"哪个改动真正有效"的分析与过拟合防护
+- 文档链：`docs/记录系统设计.md` + `docs/研究登记系统v1定稿.md`（原始设计）→ `docs/superpowers/specs/2026-08-20-research-registry-design.md`（唯一实现依据）→ `docs/superpowers/plans/2026-08-20-research-registry.md`（11 任务 TDD 计划，已执行完毕）
+- 现状：`小市值/research/` 包（`cli.py`/`db.py`/`reports.py`/`schema.sql` 等）、`registry.db` 均已入库；CLI `python -m research` 全子命令非交互（flag/JSON），含 `report regenerate` 全量重生成 5 类归档报告；5 类归档 Markdown（strategies/experiments/runs/studies/analyses）单向生成、禁止手工编辑；`README.md` 十条宪法；80 测试全绿
+- 实现约定：8 表 SQLite（`小市值/research/registry.db`）；`pip install -e 小市值` 一次性安装，命令统一从仓库根 `D:\量化\聚宽` 执行；`metric_value` 一律存小数；非数值信息（如最大回撤区间）写入 `runs.notes`
+- 登记纪律与 metric_source 规则（`joinquant_pasted` 才可作 Analysis 证据等）见"小市值策略"一节，此处不重复
 - 已定字段与指标名（防编造）：D1 六字段 = `runs.n_trades/benchmark/benchmark_return/regime`、`experiments.n_trials`(默认1)、`study_runs.partition`(is/oos)；约定指标名 = total_return/alpha/beta/daily_excess_return/excess_max_drawdown/excess_sharpe/daily_win_rate/information_ratio/benchmark_volatility/win_trades/loss_trades/drawdown_recovery
 - 执行到 plan 的 Task 11 时会按 spec §11 修订本 AGENTS.md（5 项更新）——届时以执行结果为准
 
