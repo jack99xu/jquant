@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from research import db
+
 SCHEMA = Path(__file__).resolve().parent.parent / "schema.sql"
 
 TABLE_NAMES = {
@@ -69,3 +71,22 @@ def test_metrics_compound_pk(tmp_path):
             "INSERT INTO metrics (run_id, metric_name, metric_value, metric_source) "
             "VALUES ('R0001', 'sharpe', 2.0, 'joinquant_pasted')"
         )
+
+
+def test_connect_sets_row_factory_and_fk(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    assert conn.row_factory is sqlite3.Row
+    # PRAGMA foreign_keys 是连接级设置，读回验证
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
+def test_init_db_via_db_module(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    db.init_db(conn)
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    assert TABLE_NAMES <= {r["name"] for r in rows}
+
+
+def test_repo_root_finds_git_dir():
+    root = db.repo_root()
+    assert (root / ".git").exists()
