@@ -252,14 +252,15 @@ CREATE TABLE analyses (
 
 **关键实现要点**：
 
-- **运行目录约定**：所有命令从仓库根（`D:\量化\聚宽`）执行。`research` 包位于 `小市值/research/`，代码内部需自行定位仓库根（向上遍历查找 `.git` 目录），所有 git 子进程调用、`source_path`（`小市值/小市值策略代码.md`）、日志文件路径均以仓库根为基准。`__main__.py` 需把 `小市值` 目录加入 `sys.path` 或安装为本地包，确保 `python -m research` 从仓库根可执行。
+- **运行目录约定**：所有命令从仓库根（`D:\量化\聚宽`）执行。`research` 包位于 `小市值/research/`，代码内部需自行定位仓库根（向上遍历查找 `.git` 目录），所有 git 子进程调用、`source_path`（`小市值/小市值策略代码.md`）、日志文件路径均以仓库根为基准。
+- **包安装机制（唯一方案，替代循环的 sys.path 表述）**：为 `小市值/` 添加最小 `pyproject.toml`（声明包名 `research`，`packages = ["research"]`），AGENTS.md 记录一次性安装命令 `pip install -e 小市值`（环境已确认 pip 可用、uv 不可用；`-e` 可编辑安装使后续改动即时生效）。安装后 `python -m research` 从仓库根任意位置可执行；实现时在 `__main__.py` 内定位仓库根并插入 `sys.path` 仅用于运行时内部模块解析，不承担包发现职责。
 - `strategy create` 执行前必须确认 `git status` 对 `小市值/小市值策略代码.md` 干净（无未提交改动），否则报错要求先 commit——`git_commit_hash` 必须对应硬盘上实际内容。**检查用 `git diff --quiet HEAD -- <file>`（或 `git -c core.quotepath=false status --porcelain` 解析），避免 Windows 下中文文件名被 git 默认转义（core.quotepath）导致误判**
 - `git_commit_hash` 用 `git rev-parse HEAD`，`file_blob_hash` 用 `git hash-object 小市值/小市值策略代码.md`，均走 subprocess 调用标准 git 命令
 - 版本间 diff 用 `git diff <hash1> <hash2> -- 小市值/小市值策略代码.md`，比手填 changed_modules 列表可靠
 - `file_blob_hash` 相同时（内容未变又跑了一次 `strategy create`），CLI 给警告而非静默通过或强制拒绝——留给用户判断是否是有意回退重登记
 - **根版本引导**：`strategy create` 不传 `--parent` 即创建根版本（`parent_strategy_id = NULL`），这是系统第一个 Strategy 的创建方式，也是任何 Experiment 创建前的先决条件
 - **`strategies.name` 取值规则**：CLI 提供可选 `--name`；不传时默认取 `change_summary`（或 commit message）前 40 个字符截断
-- **`strategy create --experiment E0008` 回填行为**：创建 Strategy 后必须校验 `E0008` 存在（`experiments` 表），并把其 `candidate_strategy_id` 更新为新 Strategy 的 ID；若该 Experiment 已有 candidate 则报错（一个 Experiment 只允许一个 candidate，走 promote 流程替换时先显式清空）
+- **`strategy create --experiment E0008` 回填行为**：创建 Strategy 后必须校验 `E0008` 存在（`experiments` 表），并把其 `candidate_strategy_id` 更新为新 Strategy 的 ID；若该 Experiment 已有 candidate 则报错（一个 Experiment 只允许一个 candidate；如需更换某 Experiment 的 candidate，先显式清空原值再执行 `strategy create --experiment`。`promote` 永远创建新 Experiment，不参与 candidate 替换）
 
 ## 5. 归档 Markdown 模板
 
@@ -600,7 +601,7 @@ python -m research promote `
 
 1. `python -m pytest research/tests/ -v` 全部通过（8 个测试文件，pytest 从仓库根执行）
 2. CLI 全命令实测（**注意顺序**：必须先建根 Strategy 才能建 Experiment，因为 `baseline_strategy_id` NOT NULL）：
-   `init` → `strategy create`（无 --parent，根版本）→ `strategy create --quick`（快速检查点）→ `hypothesis create` → `experiment create`（baseline 指向根 Strategy）→ `run create`（flag 与 --from-json 两种）→ `study create` → `study batch-add-runs` → `analyze` → `analysis create` → `promote`（把快速检查点 Strategy 升级为正式实验），全链路无报错
+   `init` → `strategy create`（无 --parent，根版本）→ `strategy create --quick --parent <根版本>`（快速检查点）→ `hypothesis create` → `experiment create`（baseline 指向根 Strategy）→ `run create`（flag 与 --from-json 两种）→ `study create` → `study batch-add-runs` → `analyze` → `analysis create` → `promote`（把快速检查点 Strategy 升级为正式实验），全链路无报错
 3. 5 类 Markdown 文件正确生成且与 db 一致；`analysis create` 后 `studies/*.md` 结论章节被填充
 4. `strategy create` 在工作区有未提交改动时报错拦截
 5. `file_blob_hash` 相同重复登记时给出警告
