@@ -1,7 +1,7 @@
 """封装 git 命令调用（subprocess），替代自建 hash 方案。
 
 所有命令以仓库根为 cwd；git 输出可能含中文路径，
-统一用 -c core.quotepath=false 防止非 ASCII 路径被转义（Windows GBK 控制台场景）。
+统一用 -c core.quotepath=false 防止非 ASCII 路径被转义（Windows 场景）。
 """
 import subprocess
 from pathlib import Path
@@ -9,7 +9,8 @@ from pathlib import Path
 
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", *args], cwd=str(root), capture_output=True, text=True, encoding="utf-8"
+        ["git", "-c", "core.quotepath=false", *args],
+        cwd=str(root), capture_output=True, text=True, encoding="utf-8",
     )
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} 失败: {result.stderr.strip()}")
@@ -29,14 +30,11 @@ def git_blob_hash(root: Path, relpath: str) -> str:
 def worktree_clean(root: Path, relpath: str) -> bool:
     """relpath 无未提交改动（含未跟踪文件），返回 True。
 
-    用 porcelain 输出判断：输出为空即干净。
-    -c core.quotepath=false 保证中文文件名不被 \345\260\217 形式转义。
+    porcelain 输出为空即干净；非零退出码（非 git 仓库等）由 _git 抛 RuntimeError。
+    --untracked-files=normal 显式要求未跟踪文件可见，不受用户 showUntrackedFiles 配置影响。
     """
-    result = subprocess.run(
-        ["git", "-c", "core.quotepath=false", "status", "--porcelain", "--", relpath],
-        cwd=str(root), capture_output=True, text=True, encoding="utf-8",
-    )
-    return result.stdout.strip() == ""
+    out = _git(root, "status", "--porcelain", "--untracked-files=normal", "--", relpath)
+    return out == ""
 
 
 def commit_message(root: Path) -> str:
