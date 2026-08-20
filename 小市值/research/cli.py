@@ -114,7 +114,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
 def cmd_run_create(args: argparse.Namespace) -> int:
     conn = _get_conn()
     if args.from_json:
-        data = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
+        data = json.loads(Path(args.from_json).read_text(encoding="utf-8-sig"))
         rid = run.create_run_from_json(conn, data)
     else:
         metrics = []
@@ -158,7 +158,7 @@ def cmd_run_show(args: argparse.Namespace) -> int:
 
 def cmd_study_create(args: argparse.Namespace) -> int:
     conn = _get_conn()
-    design = json.loads(Path(args.design).read_text(encoding="utf-8"))
+    design = json.loads(Path(args.design).read_text(encoding="utf-8-sig"))
     stid = study.create_study(conn, experiment_id=args.experiment,
                               study_type=args.type, name=args.name,
                               design_json=design, description=args.description)
@@ -178,7 +178,7 @@ def cmd_study_add_run(args: argparse.Namespace) -> int:
 
 def cmd_study_batch_add_runs(args: argparse.Namespace) -> int:
     conn = _get_conn()
-    payload = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
+    payload = json.loads(Path(args.from_json).read_text(encoding="utf-8-sig"))
     created = study.batch_add_runs(conn, args.study_id, payload)
     print(f"已创建并挂入: {', '.join(created)}")
     reports.write_study_report(conn, args.study_id, REPORT_ROOT)
