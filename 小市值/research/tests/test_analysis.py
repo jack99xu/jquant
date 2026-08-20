@@ -1,7 +1,7 @@
 """Study 统计分析与过拟合诊断、Analysis 结论登记测试。"""
 import pytest
 
-from research import analysis, db
+from research import analysis, db, reports  # reports 为 Task 9 追加（顶部 import 区）
 
 
 def _conn(tmp_path):
@@ -122,3 +122,102 @@ def test_create_analysis_missing_study(tmp_path):
     with pytest.raises(RuntimeError, match="不存在"):
         analysis.create_analysis(conn, study_id="ST9999", decision="ACCEPT",
                                  evidence_level="E2")
+
+
+# ==================== 报告生成测试（Task 9，spec §10 Phase 7） ====================
+
+
+def _seed_report_data(conn):
+    """造一份完整数据：strategy + experiment + run + study + analysis。
+
+    Task 9 落地时修正：与 _conn 共用 S0001/E0001/ST0001 主键，先按外键
+    依赖顺序清空 7 表，使本函数不依赖调用前的表状态（否则 UNIQUE 冲突）。
+    """
+    for table in ("analyses", "study_runs", "studies", "metrics",
+                  "runs", "experiments", "strategies"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.commit()
+    conn.execute(
+        "INSERT INTO strategies (strategy_id, parent_strategy_id, name, source_path, "
+        "git_commit_hash, file_blob_hash, change_summary, created_at) "
+        "VALUES ('S0001', NULL, '根版本', '小市值/小市值策略代码.md', "
+        "'a'*40, 'b'*40, '初始策略', '2026-08-18')")
+    conn.execute(
+        "INSERT INTO experiments (experiment_id, baseline_strategy_id, candidate_strategy_id, "
+        "title, change_scope, validation_tier, n_trials, status, created_at) "
+        "VALUES ('E0001', 'S0001', 'S0001', '指数趋势风控', 'LARGE', 'V4', 3, 'RUNNING', '2026-08-18')")
+    conn.execute(
+        "INSERT INTO runs (run_id, strategy_id, experiment_id, start_date, end_date, "
+        "initial_capital, frequency, status, n_trades, benchmark, benchmark_return, regime, created_at) "
+        "VALUES ('R0001', 'S0001', 'E0001', '2020-01-01', '2021-01-01', 1000000, 'daily', "
+        "'SUCCESS', 12, '000905.XSHG', 0.102, 'sideways', '2026-08-18')")
+    conn.execute(
+        "INSERT INTO metrics (run_id, metric_name, metric_value, metric_source) "
+        "VALUES ('R0001', 'total_return', 0.213, 'joinquant_pasted'), "
+        "('R0001', 'max_drawdown', 0.174, 'joinquant_pasted'), "
+        "('R0001', 'sharpe', 1.52, 'joinquant_pasted')")
+    conn.execute(
+        "INSERT INTO studies (study_id, experiment_id, study_type, name, design_json, created_at) "
+        "VALUES ('ST0001', 'E0001', 'ROLLING', '滚动验证', "
+        "'{\"type\": \"ROLLING\", \"windows\": []}', '2026-08-18')")
+    conn.execute(
+        "INSERT INTO study_runs (study_id, run_id, group_name, role, partition) "
+        "VALUES ('ST0001', 'R0001', '2020-2021', 'candidate', 'is')")
+    conn.execute(
+        "INSERT INTO analyses (analysis_id, study_id, conclusion, decision, evidence_level, "
+        "confidence, created_at) "
+        "VALUES ('A0001', 'ST0001', '候选策略方向一致', 'ACCEPT', 'E2', 0.8, '2026-08-18')")
+    conn.commit()
+
+
+def test_strategy_report_written(tmp_path):
+    conn = _conn(tmp_path)
+    _seed_report_data(conn)
+    path = reports.write_strategy_report(conn, "S0001", root=tmp_path / "out")
+    assert path.name == "S0001.md"
+    text = path.read_text(encoding="utf-8")
+    assert "# S0001" in text
+    assert "Git Commit" in text
+    assert "初始策略" in text
+
+
+def test_experiment_report_written(tmp_path):
+    conn = _conn(tmp_path)
+    _seed_report_data(conn)
+    path = reports.write_experiment_report(conn, "E0001", root=tmp_path / "out")
+    text = path.read_text(encoding="utf-8")
+    assert "Baseline: S0001" in text
+    assert "Candidate: S0001" in text
+    assert "试验次数: 3" in text
+
+
+def test_run_report_metrics_table(tmp_path):
+    conn = _conn(tmp_path)
+    _seed_report_data(conn)
+    path = reports.write_run_report(conn, "R0001", root=tmp_path / "out")
+    text = path.read_text(encoding="utf-8")
+    assert "| total_return | 0.213 | joinquant_pasted |" in text
+    assert "000905.XSHG" in text
+    assert "SUCCESS" in text
+
+
+def test_study_report_conclusion_filled(tmp_path):
+    conn = _conn(tmp_path)
+    _seed_report_data(conn)
+    path = reports.write_study_report(conn, "ST0001", root=tmp_path / "out")
+    text = path.read_text(encoding="utf-8")
+    assert "## 结论" in text
+    assert "候选策略方向一致" in text  # 由关联 Analysis 填充（spec §5/§13 验收 3）
+
+
+def test_analysis_report_diagnostics(tmp_path):
+    conn = _conn(tmp_path)
+    _seed_report_data(conn)
+    path = reports.write_analysis_report(conn, "A0001", root=tmp_path / "out")
+    text = path.read_text(encoding="utf-8")
+    assert "Decision: ACCEPT" in text
+    assert "Evidence Level: E2" in text
+    assert "Overfitting Signals:" in text
+    # report_path 回写
+    row = conn.execute("SELECT report_path FROM analyses WHERE analysis_id='A0001'").fetchone()
+    assert row["report_path"] == str(path)
